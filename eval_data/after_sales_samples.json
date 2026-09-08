@@ -1,0 +1,66 @@
+[
+  {
+    "text": "你好,我在你家买的猫粮订单20260901001,拆开发现漏气,想退货退款。",
+    "expected": {
+      "order_no": "20260901001",
+      "request_type": "退货退款",
+      "desired_solution_keywords": ["退货", "上门取件"]
+    }
+  },
+  {
+    "text": "收到的逗猫棒少了一根,订单号是 20260902003,请补发。",
+    "expected": {
+      "order_no": "20260902003",
+      "request_type": "null",
+      "desired_solution_keywords": ["补发"]
+    }
+  },
+  {
+    "text": "猫窝买来两天就塌了,质量太差,我不想换了直接退钱。订单 20260903007",
+    "expected": {
+      "order_no": "20260903007",
+      "request_type": "仅退款",
+      "desired_solution_keywords": ["退钱", "仅退款"]
+    }
+  },
+  {
+    "text": "这个自动喂食器不出粮,售后说可以给我换个新的。订单号20260904011。",
+    "expected": {
+      "order_no": "20260904011",
+      "request_type": "换货",
+      "desired_solution_keywords": ["换"]
+    }
+  },
+  {
+    "text": "跑步机买了半年电机异响,订单20260905002,能维修吗",
+    "expected": {
+      "order_no": "20260905002",
+      "request_type": "维修",
+      "desired_solution_keywords": ["维修", "修"]
+    }
+  },
+  {
+    "text": "你们这客服电话打不通,我要投诉。",
+    "expected": {
+      "order_no": "null",
+      "request_type": "null",
+      "desired_solution_keywords": ["投诉"]
+    }
+  },
+  {
+    "text": "退货运费谁出?",
+    "expected": {
+      "order_no": "null",
+      "request_type": "null",
+      "desired_solution_keywords": []
+    }
+  },
+  {
+    "text": "订单 20260906021 的猫抓板到了但破损,请上门取件给我换个完好的。",
+    "expected": {
+      "order_no": "20260906021",
+      "request_type": "换货",
+      "desired_solution_keywords": ["换", "上门取件"]
+    }
+  }
+]

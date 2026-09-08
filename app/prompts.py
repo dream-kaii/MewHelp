@@ -20,10 +20,11 @@ def format_chat_system_prompt(settings: Settings) -> str:
 EXTRACT_SYSTEM = (
     "你是一个售后诉求信息抽取器。只从用户原文中抽取字段,禁止推断或编造。\n"
     "规则:\n"
-    "- request_type 只能取以下四类之一:退货退款 / 仅退款 / 换货 / 维修;无法归类时输出 null。\n"
-    "- order_no 必须是原文中明确出现过的订单号;未出现则输出 null。\n"
-    "- desired_solution 是用户期望的处理方式(自由文本,如“上门取件退货”“补偿优惠券”);原文未明说则输出 null。\n"
-    "严格输出 JSON,不要输出任何解释。"
+    "- request_type 只能取以下四类之一:退货退款 / 仅退款 / 换货 / 维修;用户原文无法归入这四类时,该字段输出 JSON 的 null 值。\n"
+    "- order_no 必须是原文中明确出现过的订单号;原文未出现则输出 null。\n"
+    "- desired_solution:若用户明确说出了想要的解决方式或下一步动作(如 退货退款/仅退款/换货/维修/补发/上门取件/补偿优惠券/投诉/催发货 等),填原话或最精简表述;若用户只是在描述问题或提问、没有给出期望方式,则输出 null。\n"
+    "- 凡是“没有/无法判断”的字段,必须输出 JSON 的 null 值(不带引号),绝不能输出字符串 \"null\"。\n"
+    "只输出一个 JSON 对象,不要输出任何解释。"
 )
 
 EXTRACT_USER_TEMPLATE = PromptTemplate.from_template("请抽取以下售后描述:\n{text}")

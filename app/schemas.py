@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ChatRequest(BaseModel):
@@ -28,3 +28,11 @@ class AfterSalesExtract(BaseModel):
         description="诉求类型,仅可取 退货退款/仅退款/换货/维修;无法归类为 null",
     )
     desired_solution: str | None = Field(default=None, description="用户期望的处理方案(自由文本);未明说为 null")
+
+    @field_validator("order_no", "request_type", "desired_solution", mode="before")
+    @classmethod
+    def _literal_null_to_none(cls, v):
+        """把模型误输出成字符串的 "null"/"none"/"" 归一为 JSON null,避免枚举/类型校验崩溃。"""
+        if isinstance(v, str) and v.strip().lower() in {"null", "none", ""}:
+            return None
+        return v
