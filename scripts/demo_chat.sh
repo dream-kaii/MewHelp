@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# 验收 1&2:SSE 流式 + 同 session 第二轮接上下文
-set -euo pipefail
+# 验收 1&2:SSE 流式 + 同 session 第二轮接上下文。
+# 固定 session_id 两连发,避免依赖响应解析;中文 payload 走 UTF-8 fixture 文件 + --data-binary,
+# 避免 Windows 控制台 GBK 编码破坏 JSON。
+set -uo pipefail
 BASE="${1:-http://127.0.0.1:8000}"
+FIX="$(cd "$(dirname "$0")" && pwd)/fixtures"
 
-echo "== 验收1:流式回复(应逐 token 出现)=="
+echo "== 验收1:流式回复(首轮为新会话,应含 event: session,逐 delta 输出,结尾 event: done)=="
 curl -sN -X POST "$BASE/api/chat" \
   -H 'Content-Type: application/json' \
-  -d '{"message":"你好,我的订单一直没发货,能帮我看看吗?订单号20260901001"}' | tee /tmp/chat1.sse
-
-SID=$(grep -o '"session_id":"[0-9a-f]*"' /tmp/chat1.sse | head -1 | sed 's/.*:"//;s/"//')
-if [ -z "$SID" ]; then
-  echo
-  echo "!! 未在首轮响应中解析到 session_id(可能首轮用了已存在会话或格式变化)" >&2
-fi
+  --data-binary "@$FIX/chat1.json"
 echo
-echo "== 验收2:同一 session 第二轮(应接住第一轮上下文,session_id=$SID)=="
+echo
+echo "== 验收2:同一 session(demo-acceptance)第二轮,应能接住第一轮上下文、复述订单号 =="
 curl -sN -X POST "$BASE/api/chat" \
   -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"$SID\",\"message\":\"那能顺便告诉我大概多久能到吗?\"}"
+  --data-binary "@$FIX/chat2.json"
 echo
+exit 0
