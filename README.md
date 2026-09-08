@@ -35,6 +35,11 @@ cp .env.example .env   # 然后填 key
 python -m uvicorn app.main:app --port 8000
 ```
 
+浏览器打开 <http://127.0.0.1:8000> 即客服聊天页(可爱暖色 + 小猫头像,SSE 逐字渲染、多轮续接)。API 同源:
+- `POST /api/chat`(SSE)
+- `POST /api/extract`
+- `GET /healthz`
+
 健康检查:`curl http://127.0.0.1:8000/healthz`
 
 ## 三连验收
