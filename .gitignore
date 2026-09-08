@@ -22,3 +22,6 @@ Thumbs.db
 # Node (future chat-ui chapters)
 node_modules/
 dist/
+
+# Claude Code machine-local permission allowlist (not for commit)
+.claude/settings.local.json
