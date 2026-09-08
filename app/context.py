@@ -1,13 +1,15 @@
 """历史裁剪 + token 预算。纯函数,不依赖 langchain / 网络,历史一律为 list[dict]。"""
 
+import math
+
 _MESSAGE_OVERHEAD = 4  # 每条消息的固定估算开销(角色/格式)
 
 
 def estimate_tokens(text: str, chars_per_token: float = 2.0) -> int:
-    """启发式估算 token 数。默认约 2 个字符 = 1 token(中文为主的场景)。"""
+    """启发式估算 token 数。默认约 2 个字符 = 1 token(中文为主),向上取整。"""
     if not text:
         return 0
-    return max(1, int(len(text) / chars_per_token))
+    return max(1, math.ceil(len(text) / chars_per_token))
 
 
 def total_tokens(messages: list[dict]) -> int:

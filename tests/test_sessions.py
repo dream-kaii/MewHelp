@@ -40,3 +40,21 @@ def test_store_evicts_oldest_when_over_max():
     store.get_or_create("c")  # 触发淘汰
     assert store.get("a") is None
     assert store.get("b") is not None and store.get("c") is not None
+
+
+def test_lock_is_stable_per_session_and_eviction_drops_lock():
+    store = SessionStore(max_sessions=2)
+    store.get_or_create("a")
+    store.get_or_create("b")
+    assert store.lock("a") is store.lock("a")  # 同会话返回同一把锁
+    store.get_or_create("c")  # 淘汰 "a"
+    assert store.get("a") is None
+    assert store.lock("c") is store.lock("c")
+
+
+def test_append_turn_tolerates_evicted_session():
+    store = SessionStore(max_sessions=1)
+    store.get_or_create("gone")
+    store.get_or_create("other")  # 淘汰 "gone"
+    store.append_turn("gone", "问", "答")  # 不应抛 KeyError
+    assert store.get("other").turns == []

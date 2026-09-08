@@ -94,10 +94,10 @@ dev-notes/ch01.md   分阶段开发留痕(brainstorm/计划/各 Task/code review
 `POST /api/chat`,`body = {session_id?, message}` → `text/event-stream`,逐事件:
 
 ```
-event: session   data: {"session_id":"..."}   # 仅新建会话
+event: session   data: {"session_id":"..."}              # 仅新建会话
 event: delta     data: {"content":"你"}
-event: done      data: {"finish":true}
-event: error     data: {"message":"..."}       # 上游异常
+event: done      data: {"session_id":"...","finish":true}
+event: error     data: {"message":"..."}                  # 上游异常
 ```
 
 多轮语义:历史由**服务端按 session_id 持有**(进程内存),客户端只传 id。

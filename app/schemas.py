@@ -4,12 +4,26 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class ChatRequest(BaseModel):
-    session_id: str | None = Field(default=None, description="会话 id;缺省由服务端生成并回传")
+    session_id: str | None = Field(default=None, max_length=128, description="会话 id;缺省由服务端生成并回传")
     message: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("message")
+    @classmethod
+    def _message_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("message 不能为空白")
+        return v
 
 
 class ExtractRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("text")
+    @classmethod
+    def _text_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("text 不能为空白")
+        return v
 
 
 class RequestType(str, Enum):

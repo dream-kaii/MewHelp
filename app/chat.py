@@ -53,29 +53,31 @@ class ChatService:
 
     async def stream_turn(self, session_id: str | None, user_text: str):
         session, created = self._store.get_or_create(session_id)
-        if created:
-            yield ServerSentEvent(event="session", data={"session_id": session.session_id})
+        # 同会话整轮持锁:阻止同一 session 并发请求互相读到未落盘的历史。
+        async with self._store.lock(session.session_id):
+            if created:
+                yield ServerSentEvent(event="session", data={"session_id": session.session_id})
 
-        messages = build_messages(
-            self._system_prompt,
-            session.turns,
-            user_text,
-            self._settings.history_budget_tokens,
-        )
-        collected: list[str] = []
-        try:
-            async for chunk in self._model.astream(to_langchain_messages(messages)):
-                text = text_of_chunk(chunk)
-                if not text:
-                    continue
-                collected.append(text)
-                yield ServerSentEvent(event="delta", data={"content": text})
-                await asyncio.sleep(0)  # 让出事件循环,便于取消
-        except Exception:
-            logger.exception("chat stream error session=%s", session.session_id)
-            yield ServerSentEvent(event="error", data={"message": "抱歉,服务暂时不可用,请稍后重试"})
-            return
+            collected: list[str] = []
+            try:
+                messages = build_messages(
+                    self._system_prompt,
+                    session.turns,
+                    user_text,
+                    self._settings.history_budget_tokens,
+                )
+                async for chunk in self._model.astream(to_langchain_messages(messages)):
+                    text = text_of_chunk(chunk)
+                    if not text:
+                        continue
+                    collected.append(text)
+                    yield ServerSentEvent(event="delta", data={"content": text})
+                    await asyncio.sleep(0)  # 让出事件循环,便于取消
+                # 即使助手空回复也落盘,避免用户消息在历史里"消失"
+                self._store.append_turn(session.session_id, user_text, "".join(collected))
+            except Exception:
+                logger.exception("chat stream error session=%s", session.session_id)
+                yield ServerSentEvent(event="error", data={"message": "抱歉,服务暂时不可用,请稍后重试"})
+                return
 
-        if collected:
-            self._store.append_turn(session.session_id, user_text, "".join(collected))
-        yield ServerSentEvent(event="done", data={"finish": True})
+            yield ServerSentEvent(event="done", data={"session_id": session.session_id, "finish": True})

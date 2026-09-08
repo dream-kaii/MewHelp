@@ -14,6 +14,11 @@ def test_estimate_tokens_scales_with_length():
     assert estimate_tokens("你好" * 100) > estimate_tokens("你好")
 
 
+def test_estimate_tokens_rounds_up():
+    assert estimate_tokens("abc") == 2  # 3 字符 / 2 → 向上取整
+    assert estimate_tokens("a") == 1
+
+
 def test_trim_keeps_system_and_current_message():
     history = [U(0), A(0), U(1), A(1), U(2), A(2)]
     out = trim_to_budget([SYS] + history + [U(3)], budget=50)
