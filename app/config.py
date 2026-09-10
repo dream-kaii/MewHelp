@@ -21,6 +21,18 @@ class Settings(BaseSettings):
     cs_shop_name: str = "MewHelp"
     cs_staff_name: str = "小喵"
 
+    # MySQL
+    mysql_host: str = "127.0.0.1"
+    mysql_port: int = 3306
+    mysql_user: str = "root"
+    mysql_password: str = ""
+    mysql_database: str = "mewhelp"
+    mysql_test_database: str = "mewhelp_test"
+    # 工具执行
+    tool_timeout_seconds: float = 8.0
+    tool_max_retries: int = 2
+    mock_seed_salt: str = "mewhelp"
+
 
 @lru_cache
 def get_settings() -> Settings:
