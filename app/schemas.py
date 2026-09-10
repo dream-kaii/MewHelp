@@ -4,7 +4,9 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class ChatRequest(BaseModel):
-    session_id: str | None = Field(default=None, max_length=128, description="会话 id;缺省由服务端生成并回传")
+    session_id: str | None = Field(default=None, max_length=128, description="(ch01 遗留,忽略)")
+    conversation_id: int | None = Field(default=None, description="会话 id;缺省则新建并回传")
+    user_id: str = Field(default="web-anonymous", max_length=64)
     message: str = Field(min_length=1, max_length=4000)
 
     @field_validator("message")

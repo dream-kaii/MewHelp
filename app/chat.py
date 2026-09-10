@@ -106,7 +106,7 @@ class ChatService:
                     if phase == "running":
                         data["args"] = args
                     else:
-                        data["summary"] = summary[:200]
+                        data["summary"] = (summary or "")[:200]
                     status_frames.append(ServerSentEvent(event="tool", data=data))
 
                 results = await execute_tool_calls(

@@ -1,13 +1,24 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 from app.config import get_settings
+from app.db.base import dispose_engine
 from app.routers import chat as chat_router
 from app.routers import extract as extract_router
 
-app = FastAPI(title="MewHelp CS ch01")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    # 关闭时释放连接池:连接绑定在创建它的事件循环上,
+    # 若不释放,同一进程里换个循环再用池化连接会炸(TestClient 每例一个新循环)。
+    await dispose_engine()
+
+
+app = FastAPI(title="MewHelp CS ch01", lifespan=lifespan)
 app.state.chat_model = None
 app.state.extract_model = None
 
