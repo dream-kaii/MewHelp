@@ -63,6 +63,45 @@ curl -s -X POST http://127.0.0.1:8000/api/extract -H 'Content-Type: application/
   -d '{"text":"猫粮订单20260901001漏气,想退货退款,上门取件"}'
 ```
 
+## ch02:工具调用(演示)
+
+聊天页现在会展示本轮工具轨迹徽章:调用中 🐾 工具名 → 完成 ✅ / 失败 ⚠(前端见 `web/index.html`)。
+
+启动(与 ch01 同入口):
+
+```bash
+python -m uvicorn app.main:app --port 8000
+```
+
+先灌 FAQ 种子(验收②「退货政策」需 faq 表有数据;幂等,可反复执行):
+
+```bash
+python -m scripts.seed_faq     # 首次「新增 6 条」,重跑则全部「跳过」
+```
+
+工具调用演示(物流 / FAQ / 漏召回):
+
+```bash
+bash scripts/demo_tools.sh http://127.0.0.1:8000
+```
+
+- ① `订单 1001 的物流到哪了` → 见 `event: tool`(`query_logistics`)+ 据物流结果作答。
+- ② `退货政策是什么` → `query_faq` 命中并作答(需先灌种子)。
+- ③ `邮费是多少` → 选中 `query_faq` 但返回「FAQ 未找到…」(关键词漏召回,**预期**缺口)。
+
+工具选型评测(真模型):
+
+```bash
+python -m scripts.eval_tool_selection   # 逐条核对选型;「邮费」为 known_gap,不计入退出码
+```
+
+SSE 在 ch01 帧基础上新增工具帧:
+
+```
+event: tool   data: {"call_id":"...","name":"query_logistics","args":{...},"status":"running"}
+event: tool   data: {"call_id":"...","name":"query_logistics","status":"ok","summary":"..."}
+```
+
 ## 售后抽取标注验证(Task 9)
 
 ```bash
