@@ -25,3 +25,6 @@ dist/
 
 # Claude Code machine-local permission allowlist (not for commit)
 .claude/settings.local.json
+
+# Superpowers SDD scratch workspace (ledger/briefs/review packages)
+.superpowers/
