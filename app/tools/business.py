@@ -14,7 +14,7 @@ def query_order(order_id: str) -> str:
 
 @tool
 def query_product(product_id: str) -> str:
-    """按商品编号查询商品信息(名称、价格、库存、保修)。当用户问商品本身的价格/库存/保修时使用。"""
+    """按商品编号查询某件商品的信息(名称、价格、库存、该商品的保修规格)。仅当用户给出具体商品编号、问这件商品本身时才用;问通用规则/政策请用 query_faq。"""
     return json.dumps(mock_product(product_id), ensure_ascii=False)
 
 

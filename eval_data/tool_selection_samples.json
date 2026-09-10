@@ -1,0 +1,12 @@
+[
+  {"question": "订单 1001 的物流到哪了", "expected_tool": "query_logistics"},
+  {"question": "帮我查下订单1002发货了没", "expected_tool": "query_logistics"},
+  {"question": "订单 1001 里买的是什么", "expected_tool": "query_order"},
+  {"question": "商品 P123 多少钱", "expected_tool": "query_product"},
+  {"question": "退货政策是什么", "expected_tool": "query_faq"},
+  {"question": "保修多久", "expected_tool": "query_faq"},
+  {"question": "我要投诉,给我转人工", "expected_tool": "create_ticket"},
+  {"question": "今天天气怎么样", "expected_tool": "none"},
+  {"question": "你好呀", "expected_tool": "none"},
+  {"question": "邮费是多少", "expected_tool": "query_faq", "known_gap": "关键词查表查不出来,预期漏召回"}
+]

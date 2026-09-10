@@ -8,7 +8,7 @@ from app.db import repository as repo
 def make_kb_tools(session_factory: async_sessionmaker) -> list[BaseTool]:
     @tool
     async def query_faq(keyword: str) -> str:
-        """查询店铺常见问题库(退货政策、发票、运费、保修等规则类问题)。用户问政策/规则/怎么退/能不能开票时使用。"""
+        """查询店铺通用规则与政策(退货政策、运费/邮费、发票、保修期/保修政策等)。用户问「怎么退、能不能开票、保修多久、政策是什么」这类没有具体商品编号的规则问题时,优先用这个工具。"""
         async with session_factory() as session:
             hits = await repo.search_faq(session, keyword)
         if not hits:
