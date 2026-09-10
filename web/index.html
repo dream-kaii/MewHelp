@@ -60,6 +60,15 @@
   #send:disabled{opacity:.45; cursor:not-allowed; box-shadow:none}
   #reset{flex:0 0 auto; border:1px solid #ffd3df; background:#fff; color:#a9687b; border-radius:16px; padding:9px 12px; cursor:pointer; font-size:13px}
   #reset:hover{background:#fff5f8}
+  /* 工具轨迹徽章 */
+  .tool-trail{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 2px 42px; align-self:flex-start; max-width:74%}
+  .chip{display:inline-flex; align-items:center; gap:4px; font-size:12px; padding:3px 9px; border-radius:999px;
+    background:#fff6f9; border:1px solid #ffd3df; color:#8c5a6b; box-shadow:0 1px 4px rgba(255,160,180,.12)}
+  .chip.running{background:#fff9ec; border-color:#ffe0b0; color:#9a7326}
+  .chip.ok{background:#f0fbf4; border-color:#c8ecd5; color:#3f7d59}
+  .chip.error{background:#fff0f2; border-color:#ffc9d2; color:#b93a52}
+  .chip .spin{display:inline-block; animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
   footer{flex:0 0 auto; text-align:center; font-size:11px; color:#d4b6bf; padding:6px 0 8px}
   .brandrow{display:flex; align-items:center; gap:10px}
 </style>
@@ -108,7 +117,15 @@ const $box = document.getElementById('box');
 const $send = document.getElementById('send');
 const $reset = document.getElementById('reset');
 
-let sessionId = crypto.randomUUID();
+let conversationId = null;
+let userId = localStorage.getItem('mewhelp_user_id');
+if (!userId) {
+  const rid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  userId = 'web-' + rid;
+  localStorage.setItem('mewhelp_user_id', userId);
+}
 let busy = false;
 
 document.querySelectorAll('.cat-svg').forEach(el => el.innerHTML = SVG_CAT);
@@ -164,7 +181,7 @@ function ask(){
   fetch('/api/chat', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ session_id: sessionId, message: text })
+    body: JSON.stringify({ user_id: userId, conversation_id: conversationId, message: text })
   }).then(async res => {
     if (!res.ok || !res.body){
       let detail = '服务暂时不可用(' + res.status + ')';
@@ -176,12 +193,45 @@ function ask(){
     let buf = '';
     let ai = null;
     let gotToken = false;
+    // 工具轨迹徽章:按 call_id 复用同一个 chip,running → ok / error 原地更新
+    let trail = null;
+    const chipEls = {};
+    const ensureTrail = () => {
+      if (!trail) {
+        trail = document.createElement('div');
+        trail.className = 'tool-trail';
+        if (trow.parentNode) $chat.insertBefore(trail, trow); else $chat.appendChild(trail);
+        scrollBottom();
+      }
+      return trail;
+    };
+    const renderTool = d => {
+      const key = d.call_id || d.name || 'tool';
+      let chip = chipEls[key];
+      if (!chip) {
+        chip = document.createElement('span');
+        chipEls[key] = chip;
+        ensureTrail().appendChild(chip);
+      }
+      const status = d.status || '';
+      const icon = status === 'running' ? '<span class="spin">🐾</span>' : (status === 'ok' ? '✅' : '⚠️');
+      chip.className = 'chip ' + status;
+      chip.innerHTML = icon + ' ' + (d.name || '工具');
+      chip.title = status === 'running' ? '调用中' : (d.summary || status);
+      scrollBottom();
+    };
     const onFrame = frame => {
       if (!frame) return;
       const name = (frame.event || '').trim();
       let data = null;
       try { data = frame.data && JSON.parse(frame.data); } catch(_){ data = { content: frame.data }; }
-      if (name === 'session') { /* 服务端确认会话;我们已自带 sessionId */ }
+      if (name === 'session') {
+        // 服务端新建会话并回传 id:后续轮次带上它,历史才不会断
+        if (data && data.conversation_id != null) conversationId = data.conversation_id;
+      }
+      else if (name === 'tool') {
+        renderTool(data || {});
+      }
       else if (name === 'delta'){
         if (!gotToken){ trow.remove(); ai = bubble('ai'); ai.classList.add('streaming'); gotToken = true; }
         const chunk = (data && typeof data.content === 'string') ? data.content : '';
@@ -193,6 +243,7 @@ function ask(){
         ai = null; gotToken = true;
       }
       else if (name === 'done'){
+        if (data && data.conversation_id != null) conversationId = data.conversation_id;
         if (ai){ ai.classList.remove('streaming'); ai = null; }
         else if (!gotToken){ trow.remove(); } // 空回复:不留空气泡
       }
@@ -229,7 +280,7 @@ $box.addEventListener('keydown', e => {
 });
 $send.addEventListener('click', ask);
 $reset.addEventListener('click', () => {
-  sessionId = crypto.randomUUID();
+  conversationId = null;   // 下一轮由服务端新建会话
   $chat.innerHTML = '';
   systemMsg('已开启新会话,请开始提问~');
   $box.focus();
