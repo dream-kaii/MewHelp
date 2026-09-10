@@ -3,6 +3,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 
 from app.chat import ChatService, text_of_chunk
 from app.config import Settings
+from app.context import total_tokens
 from app.db import repository as repo
 from app.tools.registry import ToolRegistry
 
@@ -125,3 +126,41 @@ async def test_model_error_emits_error_and_no_assistant_append(session_factory, 
         hist = await repo.load_history(session, cid)
     # 用户消息先落库(第一段之前),失败轮不留 assistant 行
     assert [m["role"] for m in hist] == ["user"]
+
+
+async def test_tool_history_window_starts_with_user_and_never_orphans_tool(session_factory, db_session):
+    """真实 chat 路径:带工具的历史(assistant.tool_calls + tool 行)跨预算裁剪后,
+    送给模型的窗口必须以 Human 开头,不残留会触发上游 400 的孤儿 ToolMessage/AIMessage。"""
+    async with session_factory() as session:
+        conv = await repo.get_or_create_conversation(session, conversation_id=None, user_id="u1")
+        await session.commit()
+        cid = conv.id
+        await repo.append_message(session, conversation_id=cid, role="user", content="订单1001到哪了" * 3)
+        await repo.append_message(
+            session, conversation_id=cid, role="assistant", content=None,
+            tool_calls=[{"id": "c1", "name": "query_order", "args": {"order_id": "1001"}}],
+        )
+        await repo.append_message(session, conversation_id=cid, role="tool", content="已发货", tool_call_id="c1")
+        await repo.append_message(session, conversation_id=cid, role="assistant", content="已发货,请留意" * 3)
+        await session.commit()
+        hist = await repo.load_history(session, cid)
+
+    current = "那退款呢" * 3
+    # 复刻 _build_lc_messages 的 token 口径,把预算刻在「旧算法会以 tool 行开头」的窗口上
+    rows = [{"role": h["role"], "content": h["content"]} for h in hist]
+    rows.append({"role": "user", "content": current})
+    budget = total_tokens([{"role": "system", "content": "你是客服"}, *rows[2:]])
+
+    model = RecordingChatModel(["好的"])
+    svc = ChatService(
+        model=model, registry_factory=lambda cid: ToolRegistry([]), session_factory=session_factory,
+        system_prompt="你是客服",
+        settings=Settings(history_budget_tokens=budget, tool_timeout_seconds=2, tool_max_retries=0),
+    )
+    events = await _collect(svc.stream_turn("u1", cid, current))
+    assert events[-1].event == "done"
+
+    roles = [type(m).__name__ for m in model.seen_inputs[0]]
+    assert roles[0] == "SystemMessage"
+    assert roles[1] == "HumanMessage"  # 旧实现此处为 ToolMessage
+    assert "ToolMessage" not in roles and "AIMessage" not in roles

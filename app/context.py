@@ -23,20 +23,41 @@ def _tokens_of_message(msg: dict) -> int:
     return estimate_tokens(str(msg.get("content") or "")) + _MESSAGE_OVERHEAD
 
 
-def trim_to_budget(messages: list[dict], budget: int) -> list[dict]:
-    """超预算时从最旧整对(user,assistant)删起。
+def split_turn_groups(body: list[dict]) -> list[list[dict]]:
+    """把消息体按「轮组」切分,每组以 user 开头、含其后的 assistant/tool 直到下一个 user。
 
-    不变量:首条 system(若有)与最后一条消息永不删除;仅剩 system+当前消息仍超预算则原样返回。
+    轮组 = 单独一条 user(如失败轮只落了 user),或
+    `user, assistant(tool_calls), tool..., assistant` 的完整工具往返。
+    user 之前的孤立行(理论不该出现)丢弃,保证每组首条必为 user。
+    """
+    groups: list[list[dict]] = []
+    for m in body:
+        if m.get("role") == "user":
+            groups.append([m])
+        elif groups:
+            groups[-1].append(m)
+        # else: 孤立行(首个 user 之前)→ 丢弃,它不能作为窗口开头
+    return groups
+
+
+def trim_to_budget(messages: list[dict], budget: int) -> list[dict]:
+    """超预算时按「轮组」从最旧端整组删除,绝不劈开一轮。
+
+    轮组见 `split_turn_groups`。只删整组保证:窗口紧跟 system 后必以 user 开头,
+    且不残留孤立的 tool / assistant(tool_calls)(OpenAI 协议上游会拒收
+    "messages with role 'tool' must be a response to a preceding message with 'tool_calls'")。
+    不变量:首条 system(若有)与最后一组(当前轮)永不删除;仅剩 system+当前轮
+    仍超预算则原样返回该最小窗口。(无 user 行的退化输入只保留 system。)
     """
     if not messages:
         return messages
 
     head = [messages[0]] if messages[0].get("role") == "system" else []
-    body = messages[len(head):]
+    groups = split_turn_groups(messages[len(head):])
 
-    while total_tokens(head + body) > budget and len(body) >= 2:
-        body = body[2:]  # 删最旧一整轮
-    return head + body
+    while len(groups) > 1 and total_tokens(head + [m for g in groups for m in g]) > budget:
+        groups.pop(0)  # 删最旧一整组
+    return head + [m for g in groups for m in g]
 
 
 def build_messages(system_prompt: str | None, history: list[dict], current_user_msg: str, budget: int) -> list[dict]:

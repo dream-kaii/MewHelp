@@ -80,3 +80,24 @@ async def test_pure_chat_path_still_streams_without_tools(session_factory):
     events = await _collect(svc.stream_turn("u1", None, "你好"))
     assert "tool" not in [e.event for e in events]
     assert "".join(e.data["content"] for e in events if e.event == "delta") == "你好呀"
+
+
+async def test_unparseable_tool_call_json_surfaces_as_error_frame(session_factory, db_session):
+    """模型吐出的工具调用 JSON 坏掉时,本轮不应静默无输出:调用方把它转成 error 帧。"""
+    from app.tools.business import query_order
+
+    model = ScriptedModel([_toolcall("query_order", "not-json", "c1")], ["不会走到这里"])
+    svc = ChatService(
+        model=model, registry_factory=lambda cid: ToolRegistry([query_order]), session_factory=session_factory,
+        system_prompt="你是客服", settings=SETTINGS,
+    )
+    events = await _collect(svc.stream_turn("u1", None, "订单1001到哪了"))
+    names = [e.event for e in events]
+    assert "error" in names and "done" not in names
+    assert all(e.event != "tool" for e in events)
+
+    from app.db import repository as repo
+
+    cid = events[0].data["conversation_id"]
+    hist = await repo.load_history(db_session, cid)
+    assert [m["role"] for m in hist] == ["user"]  # 坏轮不留 assistant/tool 行

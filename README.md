@@ -2,7 +2,9 @@
 
 多章项目「电商智能客服系统」第一章:**纯对话跑通**。多轮对话 + SSE 流式、PromptTemplate 客服系统提示、售后诉求 `with_structured_output` 结构化抽取。模型走**统一 OpenAI 协议**,GPT / Claude(需 OpenAI 兼容网关)/ DeepSeek / Ollama 换着接,只改 `.env`。
 
-> 本章明确不做:工具调用、Agent 循环、LangGraph、历史落库、前端(后续章节)。详见
+> ch01 范围:纯对话跑通(不含工具调用 / Agent 循环 / LangGraph)。后续章节在此基础上扩展:
+> ch02 增加了工具调用(单轮往返)、历史落库(MySQL)与聊天前端 —— 见下文「ch02」一节。
+> ch01 设计与计划存于
 > `docs/superpowers/specs/2026-09-08-ecommerce-cs-ch01-design.md` 与
 > `docs/superpowers/plans/2026-09-08-ecommerce-cs-ch01-plan.md`。
 
@@ -45,19 +47,20 @@ python -m uvicorn app.main:app --port 8000
 ## 三连验收
 
 ```bash
-bash scripts/demo_chat.sh http://127.0.0.1:8000    # ①SSE 流式 ②同 session 第二轮接上下文
+bash scripts/demo_chat.sh http://127.0.0.1:8000    # ①SSE 流式 ②同一会话第二轮接上下文
 bash scripts/demo_extract.sh http://127.0.0.1:8000 # ③售后描述 -> 结构化 JSON
 ```
 
 - ① 应看到多行 `event: delta` 与文本逐步出现,结尾 `event: done`。
-- ② 第二轮带 `session_id`,回复能引用第一轮内容。
+- ② 第二轮复用同一会话:客户端在后续请求回传首轮 `session` 帧给出的 `conversation_id`,
+  回复能引用第一轮内容。
 - ③ 返回 `order_no / request_type / desired_solution` 三字段 JSON。
 
 直接 curl 单发:
 
 ```bash
 curl -sN -X POST http://127.0.0.1:8000/api/chat -H 'Content-Type: application/json' \
-  -d '{"message":"你好"}'
+  -d '{"user_id":"demo","message":"你好"}'
 
 curl -s -X POST http://127.0.0.1:8000/api/extract -H 'Content-Type: application/json' \
   -d '{"text":"猫粮订单20260901001漏气,想退货退款,上门取件"}'
@@ -123,25 +126,30 @@ app/
   llm.py            ChatOpenAI 工厂(唯一建模型处)
   prompts.py        PromptTemplate 客服系统提示 / 抽取提示
   schemas.py        请求模型、RequestType 枚举、AfterSalesExtract
-  context.py        历史裁剪 + token 预算(纯函数)
-  sessions.py       进程内存会话存储(LRU + 轮数上限)
-  chat.py           ChatService:拼上下文 → astream → SSE delta 生成器
+  context.py        历史裁剪 + token 预算(纯函数,按轮组整组裁剪)
+  chat.py           ChatService:拼上下文 → 单轮工具往返 → SSE delta 生成器
   extract.py        ExtractService:with_structured_output 售后抽取
+  db/               引擎/会话、ORM 模型、repository(conversations/messages/… 落库)
+  tools/            工具注册表与各工具(物流/FAQ/工单等)
+  agent/            tool_runner:第一段流式收集 tool_calls、第二阶段并行执行回灌
   routers/          /api/chat(SSE)、/api/extract
 eval_data/          售后抽取标注集
-scripts/            eval_extract / demo_chat / demo_extract
-dev-notes/ch01.md   分阶段开发留痕(brainstorm/计划/各 Task/code review/finish)
+scripts/            eval_extract / eval_tool_selection / demo_chat / demo_extract / demo_tools / seed_faq
+dev-notes/          分阶段开发留痕(ch01/ch02:brainstorm/计划/各 Task/code review/finish)
 ```
 
 ## SSE 契约
 
-`POST /api/chat`,`body = {session_id?, message}` → `text/event-stream`,逐事件:
+`POST /api/chat`,`body = {user_id, conversation_id?, message}` → `text/event-stream`,逐事件:
 
 ```
-event: session   data: {"session_id":"..."}              # 仅新建会话
+event: session   data: {"conversation_id": 12}                 # 仅新建会话(未传 conversation_id 或该 id 不属本 user)
+event: tool      data: {"call_id":"...","name":"...","status":"running"|"ok"|"error", ...}
 event: delta     data: {"content":"你"}
-event: done      data: {"session_id":"...","finish":true}
-event: error     data: {"message":"..."}                  # 上游异常
+event: done      data: {"conversation_id":12,"finish":true}
+event: error     data: {"message":"..."}                        # 上游异常
 ```
 
-多轮语义:历史由**服务端按 session_id 持有**(进程内存),客户端只传 id。
+多轮语义:历史由**服务端按 conversation_id 持有**(落在 MySQL 的 `conversations` / `messages` 表),
+客户端只传 id;新建会话时 `session` 帧回传服务端生成的 `conversation_id`,后续请求带上它即可续接。
+`user_id` 用于会话归属校验:传入不属于该 user 的 `conversation_id` 会被当作新会话处理。

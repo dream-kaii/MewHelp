@@ -58,6 +58,18 @@ async def test_stream_first_round_merges_tool_call_across_chunks():
     assert calls == [{"id": "call_a", "name": "query_order", "args": {"order_id": "1001"}}]
 
 
+async def test_stream_first_round_raises_on_unparseable_tool_call_json():
+    """模型吐出的工具调用 JSON 无法解析(tool_calls 空、invalid_tool_calls 非空)必须抛错,
+    否则本轮会静默无输出。调用方(ChatService)会把它转成 error 帧。"""
+    model = FakeBoundModel([
+        AIMessageChunk(content="", tool_call_chunks=[
+            {"name": "query_order", "args": "not-json", "id": "call_x", "index": 0, "type": "tool_call_chunk"}
+        ])
+    ])
+    with pytest.raises(ValueError, match="工具调用"):
+        await stream_first_round(model, [], lambda t: None)
+
+
 @tool
 def ping(x: str) -> str:
     """ping。"""

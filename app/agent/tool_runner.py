@@ -14,7 +14,11 @@ def _text_of(chunk) -> str:
 
 
 async def stream_first_round(model_with_tools, messages, on_delta: Callable[[str], None]) -> tuple[list[dict], str]:
-    """跑绑定工具的第一段:逐 chunk 回调文本,累加得到 tool_calls(合并自 tool_call_chunks)。"""
+    """跑绑定工具的第一段:逐 chunk 回调文本,累加得到 tool_calls(合并自 tool_call_chunks)。
+
+    模型返回的工具调用 JSON 无法解析时,LangChain 把它们放进 invalid_tool_calls 而 tool_calls 为空;
+    若不处理,本轮会静默无输出。这里主动抛错,由调用方(ChatService)转成 error 帧。
+    """
     acc = None
     parts: list[str] = []
     async for chunk in model_with_tools.astream(messages):
@@ -24,6 +28,10 @@ async def stream_first_round(model_with_tools, messages, on_delta: Callable[[str
             parts.append(text)
             on_delta(text)
     calls = getattr(acc, "tool_calls", None) or []
+    invalid = getattr(acc, "invalid_tool_calls", None) or []
+    if not calls and invalid:
+        detail = "; ".join(f"{c.get('name') or '?'}: {c.get('args')}" for c in invalid)
+        raise ValueError(f"模型返回的工具调用 JSON 无法解析:{detail}")
     normalized = [{"id": c.get("id") or "", "name": c.get("name") or "", "args": c.get("args") or {}} for c in calls]
     return normalized, "".join(parts)
 
