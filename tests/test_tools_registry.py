@@ -24,8 +24,8 @@ async def test_execute_ok_and_schema_validation_error():
     reg = ToolRegistry([echo])
     r = await reg.execute("echo", {"text": "hi"}, timeout=2, retries=0)
     assert r.ok and r.content == "echo:hi" and r.attempts == 1
-    bad = await reg.execute("echo", {"wrong": 1}, timeout=2, retries=0)
-    assert not bad.ok and bad.attempts == 1  # 参数校验失败不重试
+    bad = await reg.execute("echo", {"wrong": 1}, timeout=2, retries=3)
+    assert not bad.ok and bad.attempts == 1  # 参数校验失败不重试(即使 retries=3)
 
 
 async def test_unknown_tool_is_error_without_retry():
@@ -64,11 +64,19 @@ async def test_timeout_is_enforced_and_retried():
     slow, calls = _make_counting_slow_tool()
     reg = ToolRegistry([slow])
     r = await reg.execute("slow", {"text": "x"}, timeout=0.05, retries=1)
-    assert not r.ok and calls["n"] == 2 and "超时" in (r.error or "")
+    assert not r.ok and calls["n"] == 2 and r.attempts == 2 and "超时" in (r.error or "")
+
+
+async def test_non_retryable_tool_is_not_retried_on_timeout():
+    """副作用工具在黑名单里:超时也只执行一次,attempts 恒为 1。"""
+    slow, calls = _make_counting_slow_tool()
+    reg = ToolRegistry([slow], non_retryable={"slow"})
+    r = await reg.execute("slow", {"text": "x"}, timeout=0.05, retries=3)
+    assert not r.ok and calls["n"] == 1 and r.attempts == 1 and "超时" in (r.error or "")
 
 
 def test_bindable_and_names():
     reg = ToolRegistry([echo, boom])
     assert set(reg.names()) == {"echo", "boom"}
-    assert reg.bindable() == [echo, boom]
+    assert [t.name for t in reg.bindable()] == ["echo", "boom"]  # 比较名字序列,浅拷贝也成立
     assert isinstance(ToolExecutionResult("c", "echo", {}, True, "x", None, 1), ToolExecutionResult)
