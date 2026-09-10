@@ -15,6 +15,23 @@ async def test_get_or_create_conversation_creates_and_reuses(db_session):
     assert same.id == c.id
 
 
+async def test_get_or_create_conversation_rejects_foreign_conversation_id(db_session):
+    """新契约把会话标识换成可猜的自增整数 → 必须按 user_id 归属过滤,否则会读到别人的历史。"""
+    mine = await repo.get_or_create_conversation(db_session, conversation_id=None, user_id="u1")
+    await repo.append_message(db_session, conversation_id=mine.id, role="user", content="我的隐私")
+    await db_session.commit()
+
+    # 他人拿同一个 id:视为新会话(id 不同,历史为空、看不到 u1 的留言)
+    other = await repo.get_or_create_conversation(db_session, conversation_id=mine.id, user_id="u2")
+    await db_session.commit()
+    assert other.id != mine.id and other.user_id == "u2"
+    assert await repo.load_history(db_session, other.id) == []
+
+    # 本人再传该 id:仍复用原会话
+    same = await repo.get_or_create_conversation(db_session, conversation_id=mine.id, user_id="u1")
+    assert same.id == mine.id
+
+
 async def test_append_and_load_history_roundtrip(db_session):
     c = await repo.get_or_create_conversation(db_session, conversation_id=None, user_id="u")
     await repo.append_message(db_session, conversation_id=c.id, role="user", content="你好")

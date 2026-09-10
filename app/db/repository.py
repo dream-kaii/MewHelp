@@ -11,7 +11,14 @@ async def get_or_create_conversation(
     session: AsyncSession, *, conversation_id: int | None, user_id: str
 ) -> Conversation:
     if conversation_id is not None:
-        existing = await session.get(Conversation, conversation_id)
+        # 会话 id 是可猜的自增整数 → 必须按归属过滤,别人的 id 一律视为新会话
+        existing = (
+            await session.execute(
+                select(Conversation).where(
+                    Conversation.id == conversation_id, Conversation.user_id == user_id
+                )
+            )
+        ).scalar_one_or_none()
         if existing is not None:
             return existing
     conv = Conversation(user_id=user_id)

@@ -106,6 +106,26 @@ def test_chat_route_model_error_streams_error_event(client):
     assert "event: done" not in body
 
 
+def test_chat_route_does_not_continue_another_users_conversation(client):
+    """会话归属:拿别人的 conversation_id 只会新建自己的会话(session 帧回传另一个 id)。"""
+    app.state.chat_model = RecordingModel(["第一轮:收到订单查询。"])
+    r1 = _post(client, {"user_id": "u1", "message": "我的订单怎么了"})
+    cid1 = dict(_parse_sse(r1.text))["session"]["conversation_id"]
+
+    model2 = RecordingModel(["你好呀。"])
+    app.state.chat_model = model2
+    r2 = _post(client, {"user_id": "u2", "conversation_id": cid1, "message": "那能退货吗"})
+    events2 = _parse_sse(r2.text)
+    assert "session" in [e for e, _ in events2]
+    cid2 = dict(events2)["session"]["conversation_id"]
+    assert cid2 != cid1
+    assert dict(events2)["done"]["conversation_id"] == cid2
+
+    # u2 的模型输入里不得出现 u1 的任何内容
+    contents = [getattr(m, "content", "") for m in model2.seen_inputs[0]]
+    assert "我的订单怎么了" not in contents and "第一轮:收到订单查询。" not in contents
+
+
 def test_chat_route_rejects_blank_message(client):
     r = _post(client, {"message": "   "})
     assert r.status_code == 422
