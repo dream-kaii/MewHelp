@@ -1,4 +1,7 @@
-"""历史裁剪 + token 预算。纯函数,不依赖 langchain / 网络,历史一律为 list[dict]。"""
+"""历史裁剪 + token 预算。纯函数,不依赖 langchain / 网络,历史一律为 list[dict]。
+
+`to_langchain_messages` 是消息行 → LangChain 对象的唯一转换处(惰性导入 langchain_core)。
+"""
 
 import math
 
@@ -43,3 +46,22 @@ def build_messages(system_prompt: str | None, history: list[dict], current_user_
     full.extend(history)
     full.append({"role": "user", "content": current_user_msg})
     return trim_to_budget(full, budget)
+
+
+def to_langchain_messages(messages: list[dict]) -> list:
+    """dict 行 → LangChain 消息。支持 assistant 带 tool_calls 与 role=tool 的 ToolMessage。"""
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+    out = []
+    for m in messages:
+        role = m.get("role")
+        if role == "system":
+            out.append(SystemMessage(m.get("content") or ""))
+        elif role == "assistant":
+            tcs = m.get("tool_calls") or []
+            out.append(AIMessage(content=m.get("content") or "", tool_calls=list(tcs)))
+        elif role == "tool":
+            out.append(ToolMessage(m.get("content") or "", tool_call_id=m.get("tool_call_id") or ""))
+        else:
+            out.append(HumanMessage(m.get("content") or ""))
+    return out
