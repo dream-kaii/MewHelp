@@ -86,20 +86,22 @@ async def create_ticket(
     last_err: Exception | None = None
     for _ in range(5):
         no = await next_ticket_no(session)
-        session.add(
-            Ticket(
-                ticket_no=no,
-                conversation_id=conversation_id,
-                description=description,
-                ticket_type=ticket_type,
-            )
-        )
         try:
-            await session.flush()
+            # 用 SAVEPOINT 包住插入:撞号只回滚到保存点,
+            # 不丢掉调用方在同一 session 里的其它未提交写入
+            async with session.begin_nested():
+                session.add(
+                    Ticket(
+                        ticket_no=no,
+                        conversation_id=conversation_id,
+                        description=description,
+                        ticket_type=ticket_type,
+                    )
+                )
+                await session.flush()
             return no
         except IntegrityError as exc:  # 并发撞号,重试
             last_err = exc
-            await session.rollback()
     raise RuntimeError(f"生成工单号失败: {last_err}")
 
 
