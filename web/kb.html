@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>知识库 · MewHelp</title>
+<style>
+  :root{
+    --bg:#fff7f0; --card:#ffffff;
+    --accent:#ff7a9e; --accent-deep:#ee5d86; --accent-soft:#ffe1ea;
+    --ink:#5a4448; --muted:#bfa9ae;
+    --ai-border:#ffe3ec; --shadow:0 6px 18px rgba(255,150,170,.14);
+    --ok:#3f7d59; --ok-bg:#f0fbf4; --pend:#9a7326; --pend-bg:#fff9ec; --err:#b93a52; --err-bg:#fff0f2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:linear-gradient(160deg,#fff7f0 0%,#ffeef4 100%);
+    font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif; color:var(--ink); min-height:100vh}
+  header{display:flex; align-items:center; gap:12px; padding:16px 22px;
+    background:linear-gradient(120deg,#ffd9e3,#ffc7d8 55%,#ffdcd0); border-bottom:2px solid #ffd3df}
+  header .brand{font-weight:700; font-size:18px; color:#7a2f45}
+  header .sub{font-size:12px; color:#a9687b; margin-top:2px}
+  header a{margin-left:auto; font-size:13px; color:#8c5a6b; text-decoration:none; border:1px solid #ffd3df;
+    background:#fff; padding:6px 12px; border-radius:999px}
+  header a:hover{background:#fff5f8}
+  main{max-width:1180px; margin:0 auto; padding:18px; display:grid; gap:16px; grid-template-columns:1fr 1fr}
+  @media (max-width:900px){ main{grid-template-columns:1fr} }
+  section{background:var(--card); border:1px solid var(--ai-border); border-radius:16px; box-shadow:var(--shadow); padding:14px 16px}
+  section h2{margin:0 0 10px; font-size:15px; color:#7a2f45; display:flex; align-items:center; gap:8px}
+  section h2 .pill{font-size:11px; font-weight:400; color:#a9687b; background:#fff5f8; border:1px solid #ffd3df;
+    padding:2px 8px; border-radius:999px}
+  .full{grid-column:1 / -1}
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th,td{padding:7px 8px; text-align:left; border-bottom:1px solid #ffeef3; vertical-align:top}
+  th{color:#a9687b; font-weight:600; font-size:12px}
+  tbody tr:hover{background:#fffafc; cursor:pointer}
+  tbody tr.selected{background:#fff2f6}
+  .tag{display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid transparent}
+  .tag.embedded{background:var(--ok-bg); color:var(--ok); border-color:#c8ecd5}
+  .tag.pending{background:var(--pend-bg); color:var(--pend); border-color:#ffe0b0}
+  .tag.file{background:#f4f7ff; color:#4a5f92; border-color:#d8e2ff}
+  .tag.db{background:#f7f4ff; color:#6a4a92; border-color:#e5d8ff}
+  .muted{color:var(--muted)}
+  .mono{font-family:ui-monospace,Consolas,monospace; font-size:12px}
+  .preview{max-height:320px; overflow:auto; margin-top:10px; border:1px dashed #ffd9e3; border-radius:12px; padding:8px}
+  input,textarea,select{width:100%; border:1.5px solid #ffd9e3; border-radius:12px; padding:8px 10px; font:inherit;
+    color:var(--ink); background:#fffafc; outline:none}
+  input:focus,textarea:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(255,122,158,.15)}
+  textarea{min-height:74px; resize:vertical}
+  .row{display:grid; gap:8px; grid-template-columns:1fr 1fr; margin-bottom:8px}
+  .row.one{grid-template-columns:1fr}
+  button{border:none; border-radius:12px; padding:9px 16px; background:linear-gradient(120deg,var(--accent),var(--accent-deep));
+    color:#fff; font-size:14px; font-weight:600; cursor:pointer; box-shadow:0 3px 10px rgba(255,122,158,.35)}
+  button:hover{filter:brightness(1.05)}
+  button:disabled{opacity:.5; cursor:not-allowed; box-shadow:none}
+  button.ghost{background:#fff; color:#a9687b; border:1px solid #ffd3df; box-shadow:none; font-weight:500}
+  .msg{margin-top:8px; font-size:13px; min-height:18px}
+  .msg.ok{color:var(--ok)} .msg.err{color:var(--err)}
+  .counters{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px; font-size:13px}
+  .counter{background:#fffafc; border:1px solid #ffe3ec; border-radius:12px; padding:6px 10px}
+  .counter b{color:#7a2f45}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand">🐾 知识库录入 · MewHelp</div>
+    <div class="sub">材料清单 · 切块预览 · 手工录入 · 补向量化 · 检索自测</div>
+  </div>
+  <a href="/">← 回到客服聊天</a>
+</header>
+
+<main>
+  <section class="full">
+    <h2>材料清单 <span class="pill" id="docsDir">knowledge_docs/</span>
+      <span style="margin-left:auto"><button class="ghost" onclick="loadDocs()">刷新</button></span></h2>
+    <div class="counters" id="totals"></div>
+    <table>
+      <thead><tr><th>来源</th><th>doc_id</th><th>块数</th><th>已向量化</th><th>待向量化</th><th></th></tr></thead>
+      <tbody id="docsBody"><tr><td colspan="6" class="muted">加载中…</td></tr></tbody>
+    </table>
+    <div class="preview" id="chunksPreview"><span class="muted">点上面某一行看切块预览</span></div>
+  </section>
+
+  <section>
+    <h2>手工录入 <span class="pill">落库为 pending</span></h2>
+    <div class="row">
+      <input id="fDoc" placeholder="doc_id(如 手工录入/运费补充)" />
+      <input id="fCat" placeholder="category(分类 / 章节路径)" />
+    </div>
+    <div class="row one"><input id="fQ" placeholder="问法(多条用、分隔)" /></div>
+    <div class="row one"><textarea id="fA" placeholder="答案正文"></textarea></div>
+    <div class="row">
+      <input id="fType" placeholder="content_type(默认 手工)" />
+      <div><button id="btnAdd" onclick="addChunk()">录入</button></div>
+    </div>
+    <div class="msg" id="addMsg"></div>
+  </section>
+
+  <section>
+    <h2>补向量化 <span class="pill">幂等 · 可反复点</span></h2>
+    <div class="row">
+      <input id="fLimit" type="number" min="1" placeholder="本次最多处理多少块(留空=全部)" />
+      <div><button id="btnEmbed" onclick="embedPending()">补 pending</button></div>
+    </div>
+    <div class="msg" id="embedMsg"></div>
+  </section>
+
+  <section class="full">
+    <h2>检索自测 <span class="pill">走线上同一条向量检索链路</span></h2>
+    <div class="row">
+      <input id="fQ2" placeholder="输入一句用户可能问的话,如:邮费是多少" />
+      <div class="row" style="grid-template-columns:80px 1fr; margin:0">
+        <input id="fTopK" type="number" min="1" max="20" value="5" />
+        <button id="btnSearch" onclick="runSearch()">检索</button>
+      </div>
+    </div>
+    <div class="msg" id="searchMsg"></div>
+    <div id="searchOut"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => (s === null || s === undefined ? '' : s).toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let currentDoc = null;
+
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || (res.status + ' ' + res.statusText));
+  return data;
+}
+
+async function loadDocs() {
+  const body = $('docsBody');
+  try {
+    const data = await api('/api/kb/docs');
+    $('docsDir').textContent = data.docs_dir;
+    const t = data.totals;
+    $('totals').innerHTML = `<span class="counter">块总计 <b>${t.chunks}</b></span>
+      <span class="counter">已向量化 <b>${t.embedded}</b></span>
+      <span class="counter">待向量化 <b>${t.pending}</b></span>`;
+    if (!data.docs.length) { body.innerHTML = '<tr><td colspan="6" class="muted">还没有材料</td></tr>'; return; }
+    body.innerHTML = data.docs.map(d => `
+      <tr onclick="loadChunks('${esc(d.doc_id)}')" class="${currentDoc===d.doc_id?'selected':''}">
+        <td><span class="tag ${d.source==='file'?'file':'db'}">${d.source==='file'?'文档':'库内'}</span></td>
+        <td class="mono">${esc(d.doc_id)}</td>
+        <td>${d.chunks}</td><td>${d.embedded}</td>
+        <td>${d.pending ? `<span class="tag pending">${d.pending}</span>` : '<span class="muted">0</span>'}</td>
+        <td class="muted">预览 ›</td>
+      </tr>`).join('');
+  } catch (e) { body.innerHTML = `<tr><td colspan="6" class="msg err">加载失败:${esc(e.message)}</td></tr>`; }
+}
+
+async function loadChunks(docId) {
+  currentDoc = docId;
+  const box = $('chunksPreview');
+  box.innerHTML = '加载中…';
+  try {
+    const data = await api('/api/kb/chunks?limit=200&doc_id=' + encodeURIComponent(docId));
+    if (!data.chunks.length) { box.innerHTML = '<span class="muted">该 doc_id 下还没有块</span>'; return; }
+    box.innerHTML = `<div class="muted" style="margin-bottom:6px">${esc(docId)} · ${data.count} 块</div>` +
+      data.chunks.map(c => `
+        <div style="padding:6px 4px;border-bottom:1px solid #fff0f4">
+          <div><span class="mono">#${c.id}</span>
+            <span class="tag ${c.status}">${c.status}</span>
+            <span class="muted mono">${esc(c.section_path||c.category||'')}</span></div>
+          <div style="margin-top:2px"><b>问:</b>${esc(c.questions)}</div>
+          <div class="muted" style="white-space:pre-wrap">答:${esc(c.answer)}</div>
+        </div>`).join('');
+  } catch (e) { box.innerHTML = `<span class="msg err">加载失败:${esc(e.message)}</span>`; }
+}
+
+async function addChunk() {
+  const msg = $('addMsg'); msg.className = 'msg'; msg.textContent = '提交中…';
+  try {
+    const data = await api('/api/kb/chunks', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        doc_id: $('fDoc').value.trim() || '手工录入',
+        category: $('fCat').value.trim(),
+        questions: $('fQ').value.trim(),
+        answer: $('fA').value.trim(),
+        content_type: $('fType').value.trim() || '手工',
+      })
+    });
+    if (data.inserted) {
+      msg.className = 'msg ok';
+      msg.textContent = `已录入 #${data.id}(pending)—— 点「补 pending」送进向量库`;
+      $('fQ').value = ''; $('fA').value = '';
+      loadDocs();
+    } else {
+      msg.className = 'msg'; msg.textContent = '内容已存在(按 content_hash 去重),未重复录入';
+    }
+  } catch (e) { msg.className = 'msg err'; msg.textContent = '录入失败:' + e.message; }
+}
+
+async function embedPending() {
+  const msg = $('embedMsg'); msg.className = 'msg'; msg.textContent = '向量化中…(首次会加载 BGE-M3,约几十秒)';
+  $('btnEmbed').disabled = true;
+  try {
+    const lim = $('fLimit').value.trim();
+    const data = await api('/api/kb/embed_pending', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(lim ? {limit: parseInt(lim, 10)} : {})
+    });
+    msg.className = 'msg ok';
+    msg.textContent = `本次向量化 ${data.embedded} 块;pending ${data.pending_before} → ${data.pending_after}`;
+    loadDocs();
+  } catch (e) { msg.className = 'msg err'; msg.textContent = '向量化失败:' + e.message; }
+  finally { $('btnEmbed').disabled = false; }
+}
+
+async function runSearch() {
+  const q = $('fQ2').value.trim();
+  const msg = $('searchMsg'), out = $('searchOut');
+  if (!q) { msg.className = 'msg err'; msg.textContent = '先输入要检索的话'; return; }
+  msg.className = 'msg'; msg.textContent = '检索中…'; out.innerHTML = '';
+  $('btnSearch').disabled = true;
+  try {
+    const topK = parseInt($('fTopK').value || '5', 10);
+    const data = await api(`/api/kb/search?q=${encodeURIComponent(q)}&top_k=${topK}`);
+    const hit = !/未找到/.test(data.text);
+    msg.className = 'msg ' + (hit ? 'ok' : '');
+    msg.textContent = hit ? '命中' : '未命中(低于阈值或库内无相关内容)';
+    const rows = data.hits.map(h => `<tr><td class="mono">#${h.id}</td><td>${esc(h.doc_id)}</td>
+        <td class="muted">${esc(h.section_path)}</td><td>${esc(h.questions)}</td>
+        <td class="mono">${h.score}</td></tr>`).join('');
+    out.innerHTML = `
+      <div style="margin-top:8px"><b>拼装结果(给模型看的)</b>
+        <div class="preview mono" style="white-space:pre-wrap">${esc(data.text)}</div></div>
+      ${data.hits.length ? `<div style="margin-top:8px"><b>命中明细</b>
+        <table><thead><tr><th>块</th><th>来源</th><th>章节</th><th>问法</th><th>相似度</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>` : ''}
+      ${data.hits_degraded ? '<div class="msg err">明细查询降级(向量库不可用),上面的文本仍有效</div>' : ''}`;
+  } catch (e) { msg.className = 'msg err'; msg.textContent = '检索失败:' + e.message; }
+  finally { $('btnSearch').disabled = false; }
+}
+
+loadDocs();
+</script>
+</body>
+</html>

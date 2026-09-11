@@ -2,7 +2,7 @@
 import hashlib
 import re
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import KnowledgeChunk, KnowledgeStaging
@@ -120,3 +120,36 @@ def _to_dict(r: KnowledgeChunk) -> dict:
         is_key_clause=bool(r.is_key_clause), prev_id=r.prev_id, next_id=r.next_id,
         content_hash=r.content_hash, vector_id=r.vector_id, status=r.status,
     )
+
+
+async def doc_summary(session: AsyncSession) -> list[dict]:
+    """按 doc_id 汇总块数与状态计数(/kb 材料清单用)。"""
+    rows = (
+        await session.execute(
+            select(
+                KnowledgeChunk.doc_id,
+                func.count(KnowledgeChunk.id),
+                func.sum(case((KnowledgeChunk.status == "embedded", 1), else_=0)),
+            )
+            .group_by(KnowledgeChunk.doc_id)
+            .order_by(KnowledgeChunk.doc_id)
+        )
+    ).all()
+    return [
+        {"doc_id": doc_id, "chunks": int(total or 0), "embedded": int(embedded or 0),
+         "pending": int(total or 0) - int(embedded or 0)}
+        for doc_id, total, embedded in rows
+    ]
+
+
+async def list_chunks(
+    session: AsyncSession, *, doc_id: str | None = None, status: str | None = None, limit: int = 100
+) -> list[dict]:
+    """列出知识块(可按 doc_id / status 过滤),按 id 升序,供 /kb 切块预览。"""
+    stmt = select(KnowledgeChunk).order_by(KnowledgeChunk.id).limit(max(1, limit))
+    if doc_id:
+        stmt = stmt.where(KnowledgeChunk.doc_id == doc_id)
+    if status:
+        stmt = stmt.where(KnowledgeChunk.status == status)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [_to_dict(r) for r in rows]

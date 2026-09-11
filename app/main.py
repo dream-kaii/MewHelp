@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.db.base import dispose_engine
 from app.routers import chat as chat_router
 from app.routers import extract as extract_router
+from app.routers import kb_admin as kb_router
 
 
 @asynccontextmanager
@@ -21,13 +22,20 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="MewHelp CS ch01", lifespan=lifespan)
 app.state.chat_model = None
 app.state.extract_model = None
+app.state.kb_services = None  # /kb 的服务注入点(测试用;生产为 None 走真实运行时)
 
 _WEB_INDEX = Path(__file__).resolve().parent.parent / "web" / "index.html"
+_WEB_KB = Path(__file__).resolve().parent.parent / "web" / "kb.html"
 
 
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
     return FileResponse(_WEB_INDEX)
+
+
+@app.get("/kb", include_in_schema=False)
+async def kb_page() -> FileResponse:
+    return FileResponse(_WEB_KB)
 
 
 @app.get("/healthz")
@@ -38,4 +46,5 @@ async def healthz():
 
 app.include_router(chat_router.router)
 app.include_router(extract_router.router)
+app.include_router(kb_router.router)
 
