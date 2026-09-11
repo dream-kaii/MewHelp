@@ -33,6 +33,22 @@ class Settings(BaseSettings):
     tool_max_retries: int = 2
     mock_seed_salt: str = "mewhelp"
 
+    # RAG / 知识库
+    milvus_uri: str = "http://127.0.0.1:19530"
+    milvus_token: str = ""
+    knowledge_collection: str = "knowledge"
+    milvus_test_collection: str = "knowledge_test"
+    embed_model: str = "BAAI/bge-m3"
+    embed_device: str = "cpu"
+    embed_batch_size: int = 12
+    rag_top_k: int = 5
+    rag_score_threshold: float = 0.5
+    chunk_max_chars: int = 800
+    chunk_overlap: int = 120
+    mine_batch_size: int = 20
+    mine_lookback_days: int = 30
+    dedupe_sim_threshold: float = 0.95
+
 
 @lru_cache
 def get_settings() -> Settings:
