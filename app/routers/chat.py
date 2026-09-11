@@ -8,6 +8,9 @@ from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.llm import get_chat_model
 from app.prompts import format_chat_system_prompt
+from app.rag.embedder import get_embedder
+from app.rag.retriever import KnowledgeRetriever
+from app.rag.store import VectorStore
 from app.schemas import ChatRequest
 from app.tools.business import query_logistics, query_order, query_product
 from app.tools.kb import make_kb_tools
@@ -18,7 +21,15 @@ router = APIRouter()
 
 
 def build_registry(session_factory, conversation_id: int | None) -> ToolRegistry:
-    tools = [query_order, query_product, query_logistics, *make_kb_tools(session_factory)]
+    s = get_settings()
+    retriever = KnowledgeRetriever(
+        embedder=get_embedder(s),
+        store=VectorStore(uri=s.milvus_uri, token=s.milvus_token, collection=s.knowledge_collection),
+        session_factory=session_factory,
+        top_k=s.rag_top_k,
+        score_threshold=s.rag_score_threshold,
+    )
+    tools = [query_order, query_product, query_logistics, *make_kb_tools(session_factory, retriever=retriever)]
     if conversation_id is not None:
         tools += make_ops_tools(session_factory, conversation_id=conversation_id)
     # create_ticket 写 MySQL,而超时无法取消线程里的同步工具 → 重试会落两张工单
