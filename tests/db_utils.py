@@ -7,7 +7,8 @@ from app.config import get_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "sql" / "schema.sql"
-_TABLES = ("messages", "tickets", "conversations", "faq")  # 清空顺序:先子表(有外键)
+# 清空顺序:先子表(有外键)。knowledge_chunks / knowledge_staging 无外键,顺序随意。
+_TABLES = ("messages", "tickets", "conversations", "faq", "knowledge_chunks", "knowledge_staging")
 
 
 def _connect(database: str | None = None):
