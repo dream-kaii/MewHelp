@@ -42,10 +42,21 @@ async def test_search_returns_answer_text_on_hit(session_factory, db_session):
 
 
 async def test_search_returns_not_found_below_threshold(session_factory, db_session):
+    """边界:低于阈值属「干净未命中」,不得改走关键词/SQL LIKE 召回(spec §12:本章只跑 dense 单路)。
+
+    特意在 faq 表塞一条**能命中该关键词**的行 —— 降级一旦写宽(把无命中也算失败),这里就会
+    把关键词结果捞回来,用例失败。这就是"关键词成了正式检索路径"的回归探针。
+    """
+    from app.db.models import Faq
+
     ids = await _seed(db_session)
+    db_session.add(Faq(question="邮费是多少", answer="只有关键词路径才会给出的答案", category="售后"))
+    await db_session.commit()
+
     r = KnowledgeRetriever(FakeEmbedder(), StubStore([(ids[0], 0.10)]), session_factory, top_k=5, score_threshold=0.5)
     out = await r.search("邮费是多少")
     assert "未找到" in out
+    assert "只有关键词路径才会给出的答案" not in out
 
 
 async def test_search_returns_not_found_on_empty_store(session_factory):
@@ -63,14 +74,16 @@ async def test_query_faq_uses_retriever_and_keeps_contract(session_factory, db_s
     assert isinstance(out, str) and "责任方承担" in out
 
 
-# --- 韧性:向量路径失败/无果时回退 ch02 关键词检索,FAQ 不因 Milvus 缺席而整体崩掉 ---
+# --- 降级边界:只有向量路径**抛服务异常**才回退 ch02 关键词检索;干净未命中不回退 ---
 
 
 class RaisingStore(StubStore):
-    """Milvus 不可达 / 集合不存在时 search 抛异常。"""
+    """Milvus 不可达 / 集合不存在 —— 真实形态是 MilvusException,属服务类异常。"""
 
     def search(self, vector, top_k=5):
-        raise RuntimeError("Milvus 不可达")
+        from pymilvus.exceptions import MilvusException
+
+        raise MilvusException(2, "Fail connecting to server on 127.0.0.1:19530")
 
 
 async def test_store_failure_falls_back_to_keyword_search(session_factory, db_session):
@@ -90,13 +103,37 @@ async def test_both_paths_miss_returns_not_found_without_raising(session_factory
     assert isinstance(out, str) and "未找到" in out  # 不抛出
 
 
-async def test_vector_hit_with_deleted_rows_warns_and_falls_back(session_factory, db_session, caplog):
-    """向量命中但 MySQL 行已删(fetch_by_ids 少返行)—— 记 warning,不返空串。"""
+async def test_vector_hit_with_deleted_rows_warns_and_stays_on_vector_path(session_factory, db_session, caplog):
+    """向量命中但 MySQL 行已删(fetch_by_ids 少返行):记 warning、返回「未找到」,**不回退关键词**。"""
+    from app.db.models import Faq
+
+    db_session.add(Faq(question="邮费是多少", answer="只有关键词路径才会给出的答案", category="售后"))
+    await db_session.commit()
+
     r = KnowledgeRetriever(FakeEmbedder(), StubStore([(999, 0.9)]), session_factory, top_k=5, score_threshold=0.5)
     with caplog.at_level(logging.WARNING, logger="mewhelp.rag.retriever"):
         out = await r.search("邮费是多少")
     assert "未找到" in out
+    assert "只有关键词路径才会给出的答案" not in out
     assert any("知识行已不存在" in m for m in caplog.messages), caplog.messages
+
+
+async def test_internal_programming_error_propagates(session_factory, db_session, monkeypatch):
+    """行格式化抛的编程错误(KeyError)不能被降级吞掉 —— 否则真 bug 被静默掩盖成「未找到」。"""
+    from app.db import repository_knowledge as _rk
+    from app.db.models import Faq
+
+    ids = await _seed(db_session)
+    db_session.add(Faq(question="邮费是多少", answer="只有关键词路径才会给出的答案", category="售后"))
+    await db_session.commit()
+
+    async def _bad_fetch(session, got_ids):  # 缺 'questions'/'answer' → 格式化时 KeyError
+        return [{"id": got_ids[0]}]
+
+    monkeypatch.setattr(_rk, "fetch_by_ids", _bad_fetch)
+    r = KnowledgeRetriever(FakeEmbedder(), StubStore([(ids[0], 0.9)]), session_factory, top_k=5, score_threshold=0.5)
+    with pytest.raises(KeyError):
+        await r.search("邮费是多少")
 
 
 # --- 进程级复用:embedder / store 不能每轮重建(否则每轮重载 2.27GB 权重) ---
