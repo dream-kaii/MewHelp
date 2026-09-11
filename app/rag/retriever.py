@@ -3,6 +3,7 @@
 **本章只跑 dense 单路**(spec §12):阈值挡下的「干净未命中」就是未命中,不改走关键词召回 ——
 关键词 LIKE(ch02)只是**向量路径因服务不可用而抛异常**时的兜底,保证 Milvus 缺席不整章失效。
 """
+import asyncio
 import logging
 
 from pymilvus.exceptions import MilvusException
@@ -50,8 +51,11 @@ class KnowledgeRetriever:
         """
         from app.db import repository_knowledge as rk
 
-        vector = self._embedder.encode([query])[0]
-        hits = self._store.search(vector, top_k=self._top_k)
+        # embedder.encode(BGE-M3 冷加载 ~19s CPU)与 store.search 都是**同步阻塞**调用:
+        # 直接在事件循环线程里跑会冻结所有并发 SSE 流,还会撞上 `query_faq` 的
+        # tool_timeout(默认 8s)导致首次查询超时。丢到线程池,循环照常转。
+        vector = (await asyncio.to_thread(self._embedder.encode, [query]))[0]
+        hits = await asyncio.to_thread(self._store.search, vector, self._top_k)
         kept = [(i, s) for i, s in hits if s >= self._threshold]
         if not kept:
             logger.warning("向量检索无命中(query=%r, hits=%d, threshold=%.3f)", query, len(hits), self._threshold)

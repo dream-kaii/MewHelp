@@ -114,10 +114,16 @@ async def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="离线建库:文档 → 切分 → 双写")
     p.add_argument("--doc", help="单个文件路径;缺省处理 --dir 下全部 .md")
     p.add_argument("--dir", default=str(DEFAULT_DIR))
-    p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--limit", type=int, default=None,
+                   help="本次最多向量化 N 块(分段执行);不能与 --skip-embed 同用")
     p.add_argument("--content-type", default="政策")
-    p.add_argument("--skip-embed", action="store_true", help="只写 MySQL 不向量化(便于演练断点续跑)")
+    p.add_argument("--skip-embed", action="store_true",
+                   help="只写 MySQL 不向量化(便于演练断点续跑);不能与 --limit 同用")
     args = p.parse_args(argv)
+    if args.skip_embed and args.limit is not None:
+        # 二者语义矛盾(--skip-embed 要求本次完全不向量化,--limit 要求本次向量化 N 块)。
+        # 旧实现让 --skip-embed 静默胜出,`--limit` 被无声吞掉 —— 用户以为限了量,实际一块没向量化。
+        p.error("--skip-embed 与 --limit 不能同时使用:前者要求本次不向量化,后者要求本次向量化 N 块")
 
     sf = get_sessionmaker()
     store = VectorStore(uri=s.milvus_uri, token=s.milvus_token, collection=s.knowledge_collection)

@@ -1,4 +1,7 @@
+import asyncio
+import contextlib
 import logging
+import time
 
 import pytest
 
@@ -74,6 +77,45 @@ async def test_query_faq_uses_retriever_and_keeps_contract(session_factory, db_s
     [query_faq] = make_kb_tools(session_factory, retriever=r)
     out = await query_faq.ainvoke({"keyword": "邮费是多少"})
     assert isinstance(out, str) and "责任方承担" in out
+
+
+async def test_search_runs_blocking_embed_off_the_event_loop(session_factory, db_session):
+    """回归探针:embedder.encode / store.search 是**同步阻塞**调用,必须在 to_thread 里跑。
+
+    BGE-M3 冷加载 ~19s CPU(dev-notes/ch03.md),而 query_faq 受 8s 工具超时约束 ——
+    若把阻塞调用放回事件循环线程,首次 FAQ 查询会冻结所有并发 SSE 流并必然超时一次。
+    ticker 在 encode 期间是否被调度,就是"事件循环有没有被冻住"的探针:
+    内联调用时 0.2s 的 sleep 独占循环 → encode 返回时 ticker 计数为 0 → 用例失败。
+    """
+    ids = await _seed(db_session)
+    ticks: list[int] = []
+    ticks_when_encode_returned: list[int] = []
+
+    class SlowEmbedder:
+        def encode(self, texts):
+            time.sleep(0.2)  # 模拟 BGE-M3 阻塞式前向
+            ticks_when_encode_returned.append(len(ticks))
+            return [[0.1] * 8 for _ in texts]
+
+    r = KnowledgeRetriever(SlowEmbedder(), StubStore([(ids[0], 0.9)]), session_factory, top_k=5, score_threshold=0.5)
+
+    async def ticker():
+        while True:
+            await asyncio.sleep(0.01)
+            ticks.append(1)
+
+    task = asyncio.create_task(ticker())
+    try:
+        out = await r.search("邮费是多少")
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    assert "责任方承担" in out  # 语义不变:命中照常返回组织好的文本
+    assert ticks_when_encode_returned and ticks_when_encode_returned[0] > 0, (
+        "encode 运行期间事件循环一次都没转 —— 阻塞调用又被放回事件循环线程了"
+    )
 
 
 # --- 降级边界:只有向量路径**抛服务异常**才回退 ch02 关键词检索;干净未命中不回退 ---

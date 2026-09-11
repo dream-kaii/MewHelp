@@ -192,3 +192,21 @@ async def test_cli_empty_doc_set_returns_2(monkeypatch, tmp_path):
     rc = await bk.main(["--dir", str(tmp_path / "missing_dir")])
 
     assert rc == 2
+
+
+async def test_cli_skip_embed_with_limit_is_a_loud_error(monkeypatch, tmp_path):
+    """`--skip-embed` 与 `--limit` 语义矛盾,必须显式报错(退出码 2),不能静默吞掉 --limit。
+
+    旧实现里 `skip_embed=args.skip_embed or deferred` 让 --skip-embed 静默胜出,
+    `elif deferred:` 分支永不执行 —— 用户传 `--limit 50` 却没向量化任何块且无任何提示。
+    """
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "policy.md").write_text(DOC, encoding="utf-8")
+    monkeypatch.setattr(bk, "get_embedder", lambda s: FakeEmbedder())
+    monkeypatch.setattr(bk, "VectorStore", lambda **kw: object())
+
+    with pytest.raises(SystemExit) as exc:
+        await bk.main(["--dir", str(docs_dir), "--skip-embed", "--limit", "2"])
+
+    assert exc.value.code == 2  # argparse 直接报错退出:不连 DB、不静默执行
