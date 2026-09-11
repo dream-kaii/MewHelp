@@ -56,3 +56,49 @@ CREATE TABLE IF NOT EXISTS tickets (
   KEY idx_conversation_id (conversation_id),
   CONSTRAINT fk_tickets_conversation FOREIGN KEY (conversation_id) REFERENCES conversations (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人工工单';
+
+-- =============================================================
+-- ch03 · 知识库 · 建表 DDL
+-- 本章新建:knowledge_chunks(知识块,原文权威源) / knowledge_staging(挖矿暂存)
+-- 向量库(Milvus)只存向量,原文与关系一律以 MySQL 为准
+-- =============================================================
+
+-- ch03:知识库
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '知识块主键,同时是 Milvus 主键',
+  doc_id        VARCHAR(255)    NOT NULL                COMMENT '来源文档/批次标识',
+  category      VARCHAR(255)    NOT NULL DEFAULT ''     COMMENT '分类(章节上级路径/挖矿)',
+  questions     TEXT            NOT NULL                COMMENT '问法(真实问法或章节标题)',
+  answer        TEXT            NOT NULL                COMMENT '答案正文',
+  text          TEXT            NOT NULL                COMMENT '拼装文本,向量化输入',
+  section_path  VARCHAR(512)    NOT NULL DEFAULT ''     COMMENT '章节路径(只存不进向量)',
+  content_type  VARCHAR(32)     NOT NULL DEFAULT '政策' COMMENT '内容类型元数据',
+  is_key_clause TINYINT(1)      NOT NULL DEFAULT 0      COMMENT '是否关键条款元数据',
+  prev_id       BIGINT UNSIGNED NULL                    COMMENT '前块指针',
+  next_id       BIGINT UNSIGNED NULL                    COMMENT '后块指针',
+  content_hash  CHAR(64)        NOT NULL                COMMENT '归一化内容哈希(幂等/去重)',
+  vector_id     VARCHAR(64)     NULL                    COMMENT 'Milvus 主键回填',
+  status        ENUM('pending','embedded') NOT NULL DEFAULT 'pending',
+  created_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_content_hash (content_hash),
+  KEY idx_status (status),
+  KEY idx_doc_id (doc_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识块(原文权威源)';
+
+CREATE TABLE IF NOT EXISTS knowledge_staging (
+  id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  conversation_id    BIGINT UNSIGNED NOT NULL          COMMENT '来源会话',
+  source_message_ids VARCHAR(255)    NOT NULL DEFAULT '' COMMENT '来源消息 id 列表',
+  questions          TEXT            NOT NULL          COMMENT '抽出的问法(JSON 数组)',
+  answer             TEXT            NOT NULL,
+  category           VARCHAR(255)    NOT NULL DEFAULT '',
+  dedupe_hash        CHAR(64)        NOT NULL,
+  status             ENUM('staged','promoted','dropped') NOT NULL DEFAULT 'staged',
+  created_at         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_dedupe_hash (dedupe_hash),
+  KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='挖矿暂存';

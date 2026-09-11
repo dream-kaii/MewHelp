@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, JSON, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -62,3 +62,47 @@ class Ticket(Base):
         Enum("待处理", "已处理", name="ticket_status"), nullable=False, server_default="待处理"
     )
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    doc_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    questions: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    section_path: Mapped[str] = mapped_column(String(512), nullable=False, server_default="")
+    content_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default="政策")
+    is_key_clause: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+    prev_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    next_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    vector_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(
+        Enum("pending", "embedded", name="chunk_status"), nullable=False, server_default="pending"
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class KnowledgeStaging(Base):
+    __tablename__ = "knowledge_staging"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    source_message_ids: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    questions: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    dedupe_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(
+        Enum("staged", "promoted", "dropped", name="staging_status"), nullable=False, server_default="staged"
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
