@@ -8,9 +8,8 @@ from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.llm import get_chat_model
 from app.prompts import format_chat_system_prompt
-from app.rag.embedder import get_embedder
 from app.rag.retriever import KnowledgeRetriever
-from app.rag.store import VectorStore
+from app.rag.runtime import get_shared_embedder, get_shared_store
 from app.schemas import ChatRequest
 from app.tools.business import query_logistics, query_order, query_product
 from app.tools.kb import make_kb_tools
@@ -22,9 +21,11 @@ router = APIRouter()
 
 def build_registry(session_factory, conversation_id: int | None) -> ToolRegistry:
     s = get_settings()
+    # embedder/store 取进程级单例:本函数每轮对话都会被调,现场新建 = 每轮重载 BGE-M3
+    # 权重、每轮漏一个 Milvus 连接;store 是惰性代理,Milvus 不可达时装配照常成功。
     retriever = KnowledgeRetriever(
-        embedder=get_embedder(s),
-        store=VectorStore(uri=s.milvus_uri, token=s.milvus_token, collection=s.knowledge_collection),
+        embedder=get_shared_embedder(),
+        store=get_shared_store(),
         session_factory=session_factory,
         top_k=s.rag_top_k,
         score_threshold=s.rag_score_threshold,
