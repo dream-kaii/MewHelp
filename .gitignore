@@ -28,3 +28,6 @@ dist/
 
 # Superpowers SDD scratch workspace (ledger/briefs/review packages)
 .superpowers/
+
+# Milvus docker volumes (local data)
+docker/volumes/
