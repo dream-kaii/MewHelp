@@ -1,0 +1,6 @@
+[
+  {"question": "邮费是多少", "expect_doc": "运费说明.md", "expect_keywords": ["运费", "地区"]},
+  {"question": "退货运费谁出", "expect_doc": "运费说明.md", "expect_keywords": ["责任方"]},
+  {"question": "怎么退货", "expect_doc": "退货政策.md", "expect_keywords": ["7 天"]},
+  {"question": "能开票吗", "expect_doc": "商品FAQ.md", "expect_keywords": ["发票"]}
+]

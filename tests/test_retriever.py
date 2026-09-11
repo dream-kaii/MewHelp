@@ -39,6 +39,8 @@ async def test_search_returns_answer_text_on_hit(session_factory, db_session):
     r = KnowledgeRetriever(FakeEmbedder(), StubStore([(ids[0], 0.88)]), session_factory, top_k=5, score_threshold=0.5)
     out = await r.search("邮费是多少")
     assert "责任方承担" in out and "未找到" not in out
+    # 来源 doc_id 必须出现在命中文本里:既方便人工核对,也让评测能按「期望文档」判定。
+    assert "[policy.md]" in out
 
 
 async def test_search_returns_not_found_below_threshold(session_factory, db_session):

@@ -61,9 +61,12 @@ class KnowledgeRetriever:
         score_by_id = {i: s for i, s in kept}
         parts = []
         for r in rows:
+            # 带上来源 doc_id:既方便人工核对命中来自哪份文档,也让评测脚本能按
+            # 「期望文档」判定,而不是退化成纯关键词判定。
+            doc = f"[{r['doc_id']}] " if r["doc_id"] else ""
             head = f"问:{r['questions']}" if r["questions"] else ""
             cat = f"[{r['category']}] " if r["category"] else ""
-            parts.append(f"{cat}{head}\n答:{r['answer']}\n(相似度 {score_by_id.get(r['id'], 0):.3f})")
+            parts.append(f"{doc}{cat}{head}\n答:{r['answer']}\n(相似度 {score_by_id.get(r['id'], 0):.3f})")
         if not parts:
             # fetch_by_ids 少返行(行被删/未落库):仍是"干净未命中",不能返空串,也不改走关键词。
             logger.warning("向量命中但知识行已不存在(query=%r, ids=%r)", query, [i for i, _ in kept])
