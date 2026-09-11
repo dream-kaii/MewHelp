@@ -42,6 +42,15 @@ def test_upsert_is_idempotent_by_primary_key(store):
     assert store.count() == 1
 
 
+def test_upsert_rejects_length_mismatch(store):
+    """ids 比 vectors 长时不允许静默截断(那会悄悄丢知识行),必须报错。"""
+    with pytest.raises(ValueError):
+        store.upsert([1, 2], [_vec(1.0)])
+    with pytest.raises(ValueError):
+        store.upsert([], [_vec(1.0)])
+    assert store.count() == 0
+
+
 def test_delete_removes_rows(store):
     store.upsert([1, 2], [_vec(1.0), _vec(0.5)])
     assert store.delete([1]) == 1

@@ -25,6 +25,9 @@ class VectorStore:
             )
 
     def upsert(self, ids: list[int], vectors: list[list[float]]) -> int:
+        # zip 会按短的一侧静默截断,ids 多于 vectors 时等于悄悄少写知识行 —— 直接报错。
+        if len(ids) != len(vectors):
+            raise ValueError(f"ids 与 vectors 数量不一致: {len(ids)} != {len(vectors)}")
         if not ids:
             return 0
         rows = [{"id": int(i), "vector": v} for i, v in zip(ids, vectors)]
