@@ -4,6 +4,7 @@
 
 > ch01 范围:纯对话跑通(不含工具调用 / Agent 循环 / LangGraph)。后续章节在此基础上扩展:
 > ch02 增加了工具调用(单轮往返)、历史落库(MySQL)与聊天前端 —— 见下文「ch02」一节。
+> ch03 把 `query_faq` 升级为向量召回的知识库 RAG(Milvus + 离线建库 + 挖矿 job)—— 见下文「ch03」一节。
 > ch01 设计与计划存于
 > `docs/superpowers/specs/2026-09-08-ecommerce-cs-ch01-design.md` 与
 > `docs/superpowers/plans/2026-09-08-ecommerce-cs-ch01-plan.md`。
@@ -105,6 +106,66 @@ event: tool   data: {"call_id":"...","name":"query_logistics","args":{...},"stat
 event: tool   data: {"call_id":"...","name":"query_logistics","status":"ok","summary":"..."}
 ```
 
+## ch03:知识库 RAG(向量召回)
+
+`query_faq` 从「关键词 LIKE 匹配」升级为**向量召回**:文档离线切分 → 双写 MySQL(状态机)+ Milvus(向量)→ 在线按语义检索。
+
+### 依赖服务:Milvus
+
+```bash
+bash scripts/milvus.sh up      # 起 standalone(Docker),等 healthy 再继续
+bash scripts/milvus.sh status  # healthz + 容器状态
+bash scripts/milvus.sh down    # 停并移除容器
+```
+
+连接参数在 `.env`:`MILVUS_URI` / `MILVUS_TOKEN` / `KNOWLEDGE_COLLECTION`;
+检索侧 `RAG_TOP_K`(默认 5)、`RAG_SCORE_THRESHOLD`(默认 0.5,低于此分视为未命中)。
+
+### 建库(离线:切分 → 双写)
+
+```bash
+python -m scripts.build_knowledge                 # knowledge_docs/*.md 全部
+python -m scripts.build_knowledge --doc knowledge_docs/运费说明.md
+python -m scripts.build_knowledge --limit 50      # 本次最多向量化 50 块(分段执行)
+python -m scripts.build_knowledge --skip-embed    # 只写 MySQL 不向量化(演练断点续跑)
+```
+
+幂等:按 `content_hash` 去重,重跑「新增 0 块」;中断后重跑本脚本会自动补齐未向量化的块
+(`pending` = MySQL 有行但 Milvus 无向量),无需手动清库。
+
+### 挖矿 job(从历史对话沉淀知识)
+
+```bash
+python -m scripts.mine_knowledge              # 扫历史会话 → 抽取问答 → 去重入 staging → promote 进知识库
+python -m scripts.mine_knowledge --limit 20   # 本轮最多扫 20 个会话
+python -m scripts.mine_knowledge --no-promote # 只入 staging 不推进知识库
+```
+
+promote 进知识库的行落为 `pending`,**需再跑一次 `python -m scripts.build_knowledge` 才会向量化**(与离线建库同一状态机)。
+
+### 检索质量评测
+
+```bash
+python -m scripts.eval_retrieval   # 跑 eval_data/retrieval_samples.json,要求命中率 ≥ 75%
+```
+
+### 验收:聊天页 → query_faq → 向量召回
+
+```bash
+python -m uvicorn app.main:app --port 8000   # 另开一个终端
+bash scripts/demo_rag.sh http://127.0.0.1:8000
+```
+
+- ① `邮费是多少`(知识库内)→ 见 `event: tool`(`query_faq`,`status: ok`,summary 内含相似度),
+  最终答复引用 `运费说明.md` 内容(按地区收取 / 退换货运费由责任方承担),**不再出现「查不到」**。
+- ② `你们店几点开门`(知识库外)→ 应礼貌兜底,不编造营业时间。
+
+### 边界说明
+
+- 在线检索**只跑 dense 单路**(向量召回单路);关键词检索**仅作服务故障降级**——当 Milvus / Embedding
+  不可用时才 fallback,不是并行的第二路召回。因此常驻关键词命中场景(如旧版 FAQ 直查)不在 ch03 范围内。
+- 判定「未找到」的条件:向量单路干净未命中,或命中分数低于 `RAG_SCORE_THRESHOLD`。
+
 ## 售后抽取标注验证(Task 9)
 
 ```bash
@@ -134,7 +195,7 @@ app/
   agent/            tool_runner:第一段流式收集 tool_calls、第二阶段并行执行回灌
   routers/          /api/chat(SSE)、/api/extract
 eval_data/          售后抽取标注集
-scripts/            eval_extract / eval_tool_selection / demo_chat / demo_extract / demo_tools / seed_faq
+scripts/            eval_* / demo_* / seed_faq / build_knowledge / mine_knowledge / milvus.sh
 dev-notes/          分阶段开发留痕(ch01/ch02:brainstorm/计划/各 Task/code review/finish)
 ```
 
